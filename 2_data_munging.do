@@ -67,30 +67,6 @@ merge 1:1 NSID using "`Temp'", nogen
 compress
 save "${dta_fld}/Collected Variables", replace
 
-// use NSID W8DHANVQH using "stata11/ns8_2015_derived.dta", clear 
-// merge 1:1 NSID using "stata11/ns8_2015_main_interview.dta", ///
-// 	nogen keepusing(W8FINWT W8CMSEX W8DACTIVITY) 
-// merge 1:1 NSID using "stata11/ns8_2015_self_completion.dta", ///
-// 	nogen keepusing(W8GHQ12_*) 
-// merge 1:1 NSID using "stata11/wave_five_lsype_young_person_march_2010.dta", ///
-// 	nogen keepusing(W5SexYP) 
-// merge 1:1 NSID using "stata11/wave_four_lsype_young_person_september_2009.dta", ///
-// 	nogen keepusing(W4ActivYP W4ConcenYP W4DecideYP W4DepressYP ///
-// 	W4DifficYP W4HappyYP W4Hea1CYP W4NoConfYP W4NoSleepYP W4ProbsYP ///
-// 	W4SexYP W4StrainYP W4UsefulYP W4WthlessYP W4ethgrpYP) 
-// merge 1:1 NSID using "stata11/wave_three_lsype_young_person_file_16_06_08.dta", ///
-// 	nogen keepusing(W3*bulrc W3sexYP) 
-// merge 1:1 NSID using "stata11/wave_two_lsype_family_background_file_16_06_08.dta", ///
-// 	nogen keepusing(IMDRSCORE) 
-// merge 1:1 NSID using "stata11/wave_two_lsype_young_person_file_16_06_08.dta", ///
-// 	nogen keepusing(W2Fat1YP W2Fat2YP W2Fat4YP W2Fat5YP W2Fat7YP W2Fat8YP ///
-// 	W2FinWt W2SexYP W2bulrc W2disabYP W2ethgrpYP ///
-// 	W2hea1cYP W2pbulrc W2yschat1 W2concenYP-W2happyYP) 
-// merge 1:1 NSID using "stata11/wave_one_lsype_family_background_file_21_05_08.dta", ///
-// 	nogen keepusing(W1hiqualgMP W1hiqualgSP W1nssecfam) 
-// merge 1:1 NSID using "stata11/wave_one_lsype_young_person_file_16_05_08.dta", ///
-// 	nogen keepusing(W1*bulrc W1disabYP W1ethgrpYP W1risk W1sexYP)
-
 
 * 2. Clean Data ----
 use "${dta_fld}/Collected Variables", clear	
@@ -133,7 +109,7 @@ recode w8ghq* w8locus0* w8int* w8dfather w8dmother w8adult* (min/-1=.)
 
 gen GHQ_W8_Likert=0
 foreach var of varlist w8ghq* {
-	replace GHQ_W8_Likert=GHQ_W8_Likert+`var'-1 if inrange(`var', 1, 4)
+	replace GHQ_W8_Likert=GHQ_W8_Likert+`var'-1
 	}
 
 forval i = 1/4{

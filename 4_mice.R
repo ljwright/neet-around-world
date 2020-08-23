@@ -6,24 +6,22 @@ library(glue)
 library(Hmisc)
 library(tictoc)
 
-setwd("D:/Next Steps 1-8/Projects/NEET Book")
+setwd("/cloud/project/NEET Book")
+# setwd("D:/Next Steps 1-8/Projects/NEET Book")
 rm(list=ls())
 
 # 1. Load Files ----
-clust_names <- c("Not NEET", 
-                 "Into Employment",
+clust_names <- c("Into Employment",
                  "Cyclers",
                  "Higher Education",
                  "Long-Term NEET")
 df_clusters <- read_dta("Data/neet_clusters.dta") %>%
-	select(NSID, cluster4) #%>%
-  # mutate(cluster4 = factor(cluster4, labels = clust_names))
+  select(NSID, cluster4) %>%
+  mutate(cluster4 = factor(cluster4, labels = clust_names))
 
 df_raw <- read_dta("Data/Dataset.dta") %>%
   as_factor() %>%
-	left_join(df_clusters, by = "NSID") %>%
-  mutate(cluster4 = ifelse(Months_NEET == 0, 0, cluster4) %>%
-           factor(levels = 0:4, labels = clust_names))
+  left_join(df_clusters, by = "NSID")
 
 
 # 2. Locus of Control ----
@@ -83,8 +81,7 @@ f[".FirstChildxFemale"] <- "ifelse(Child_W8 == 'Yes' & Female=='Yes', FirstChild
 f[".cluster4"] <- "factor(ifelse(Months_NEET==0, 'Not NEET', as.character(cluster4)))"
 
 df_mice <- map_dfc(f, ~ with(df, eval(parse(text = .x)))) %>%
-  bind_cols(df, .) #%>%
-  # select(-matches("FirstChild"))
+  bind_cols(df, .)
 
 meth <- make.method(df_mice)
 meth[names(f)] <- paste0("~ I(",unlist(f),")")
@@ -107,10 +104,10 @@ diag(pred) <- 0
 post <- make.post(df_mice)
 
 visit <- c("Months_NEET","cluster4",".cluster4",
-		   "Status_W8","LogPay_W8",".LogPay_W8",
-		   "Precarious_W8",".Precarious_W8",
-		   "ShiftWork_W8",".ShiftWork_W8",
-		   "FirstChild",".FirstChild",".FirstChildxFemale")
+           "Status_W8","LogPay_W8",".LogPay_W8",
+           "Precarious_W8",".Precarious_W8",
+           "ShiftWork_W8",".ShiftWork_W8",
+           "FirstChild",".FirstChild",".FirstChildxFemale")
 visit <- c(visit, names(df_mice)[!(names(df_mice) %in% visit)])
 
 
@@ -120,24 +117,35 @@ visit <- c(visit, names(df_mice)[!(names(df_mice) %in% visit)])
 # 	  			pred = pred,visit=visit,
 # 	  			post = post, print = TRUE,
 # 	  			seed = 1,  maxit = 2)
-# cores <- detectCores()-1
 set.seed(1)
 tic()
-imp <- parlmice(df, 
-				meth = meth, pred = pred, visit = visit,
-				print = FALSE, maxit = 10, post = post,
-				n.imp.core = 10, n.core= 4)
+imp <- parlmice(df_mice, 
+                meth = meth, pred = pred, visit = visit,
+                print = FALSE, maxit = 10, post = post,
+                n.imp.core = 10, n.core= 4)
 toc()
+save(imp, file = "Data/mice.Rdata")
 
 # 5. Export results ----
-imp_long <- complete(imp,"long") %>%
-  select(- .id, -all_of(str_replace(names(f), "\\.", ""))) %>%
-  rename_with(~ str_replace(.x, "\\.", ""))
+load("Data/mice.Rdata")
+imp_long <- complete(imp, "long", TRUE) %>%
+  as_tibble() %>%
+  select(-all_of(str_replace(names(f), "\\.", "")),
+         -.id, - matches("xFemale")) %>%
+  rename_with(~ str_replace(.x, "\\.", "")) %>%
+  mutate(across(c(Precarious_W8, ShiftWork_W8),
+                ~ ifelse(Status_W8 != 'Employed', NA, as.character(.x)) %>%
+                  factor()),
+         LogPay_W8 = ifelse(Status_W8 != 'Employed', NA, LogPay_W8),
+         cluster4 = ifelse(Months_NEET == 0, 'Not NEET', as.character(cluster4)) %>%
+           factor(levels = c('Not NEET', clust_names)),
+         Any_NEET = ifelse(Months_NEET == 0, 'No', 'Yes') %>%
+           factor(),
+         Employed_W8 = ifelse(Status_W8 == 'Employed', 'Yes', 'No') %>%
+           factor()) %>%
+  mutate(FirstChild = ifelse(Child_W8 != 'Yes', NA, FirstChild),
+         FirstChild = FirstChild - wtd.mean(FirstChild, Survey_Weight_W8),
+         FirstChild = ifelse(Child_W8 == 'No', 0, FirstChild))
 save(imp, imp_long, file = "Data/mice.Rdata")
-
-df_analysis <- df_mice %>%
-  select(-all_of(str_replace(names(f), "\\.", ""))) %>%
-  rename_with(~ str_replace(.x, "\\.", ""))
-save(df_analysis, file = "Data/df_analysis.Rdata")
-
+write_dta(imp_long, "Data/mice_long.dta")
 

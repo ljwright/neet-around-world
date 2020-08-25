@@ -11,6 +11,8 @@ setwd("D:/Next Steps 1-8/Projects/NEET Book")
 rm(list=ls())
 
 # 1. Set-Up ----
+load("Data/mice.Rdata")
+
 lbl_clean <- c(Any_NEET = "1+ Months NEET",
   Months_NEET = "Months NEET",
   cluster4 = "NEET Cluster",
@@ -65,8 +67,6 @@ lbl_clean <- c(Any_NEET = "1+ Months NEET",
 lbl_clean
 
 # 2. Descriptive Statistics ----
-load("Data/mice.Rdata")
-
 get_freq <- function(df, norm = 40){
   mean_age <- complete(imp, "long") %>% 
     mutate(FirstChild = ifelse(Child_W8 == 'Yes', .FirstChild, NA)) %>%
@@ -122,6 +122,7 @@ df_desc <- bind_rows(all = imp_long %>%
 
 desc_tbl <- df_desc %>%
   select(var_clean, cat_clean, all, neet, not_neet) %>%
+  mutate(across(c(var_clean, cat_clean), as.character)) %>%
   mutate(var_clean = ifelse(var_clean == cat_clean, "", var_clean)) %>%
   flextable() %>%
   merge_v(1) %>%
@@ -139,6 +140,7 @@ desc_tbl <- df_desc %>%
   align(j = 3:5, align="center", part = "all") %>%
   valign(j = 1, valign = "top") %>%
   autofit()
+desc_tbl
 save_as_docx(desc_tbl, path = "Tables/descriptive_statistics.docx")
 
 wtd_vars <- imp_long %>%
@@ -179,90 +181,191 @@ regsave <- read_dta("Data/regsave.dta") %>%
 
 # 3. Regression Plots ----
 # a. Any NEET / Months NEET
+neet_plot <- function(df, file_name = NULL, height = 9.9){
+  hlines <- tibble(outcome_clean = c("1+ Months NEET", "Months NEET"),
+                   yint = rep(1, 2))
+  
+  strip_labels <- df %>% 
+    select(var_clean, cat_clean) %>% 
+    distinct() %>%
+    mutate(across(1:2, as.character),
+           strip_label = ifelse(var_clean == cat_clean, "", var_clean)) %>%
+    select(var_clean, strip_label) %>%
+    deframe()
+  
+  p <- ggplot(df) +
+    aes(x = cat_clean, y = beta, ymin = lci, ymax = uci,
+        color = part) +
+    geom_hline(data = hlines, aes(yintercept = yint)) +
+    geom_pointrange(position = position_dodge(0.6)) +
+    scale_color_brewer(palette = "Dark2") +
+    coord_flip() +
+    facet_grid(var_clean ~ outcome_clean, scales = "free", switch = "y",
+               labeller = labeller(var_clean = strip_labels)) +
+    labs(x = NULL, y = NULL) +
+    guides(color = FALSE) +
+    theme_minimal() +
+    theme(strip.placement = "outside",
+          strip.text.y.left = element_text(angle = 0))
+  if (!is.null(file_name)){
+    file_name <- paste0("Images/", file_name, ".png")
+    ggsave(filename = file_name, plot = p,
+           dpi = 600, height = height, width = 21, units = "cm")
+  }
+  p
+}
 df_temp <- regsave %>%
   filter(outcome %in% c("Months_NEET", "Any_NEET"),
          part != "inflate",
          type == "mi", var != "_cons")
 
-strip_labels <- df_temp %>% 
-  select(var_clean, cat_clean) %>% 
-  distinct() %>%
-  mutate(across(1:2, as.character),
-         strip_label = ifelse(var_clean == cat_clean, "", var_clean)) %>%
-  select(var_clean, strip_label) %>%
-  deframe()
+df_temp %>%
+  filter(str_detect(var, "Child") |
+           str_detect(var, "Female")) %>%
+  neet_plot("neet_gender_child")
 
-hlines <- tibble(outcome_clean = c("1+ Months NEET", "Months NEET"),
-                 yint = rep(1, 2))
+df_temp %>%
+  filter(var %in% 
+           c("Any_VET", "NonWhite", "ForLangHH_W1", "HHType_W1")) %>%
+  neet_plot("neet_vet_household")
 
-ggplot(df_temp) +
-  aes(x = cat_clean, y = beta, ymin = lci, ymax = uci,
-      color = part) +
-  geom_hline(data = hlines, aes(yintercept = yint)) +
-  geom_pointrange(position = position_dodge(0.6)) +
-  scale_color_brewer(palette = "Dark2") +
-  coord_flip() +
-  facet_grid(var_clean ~ outcome_clean, scales = "free", switch = "y",
-             labeller = labeller(var_clean = strip_labels)) +
-  labs(x = NULL, y = NULL) +
-  guides(color = FALSE) +
-  theme_minimal() +
-  theme(strip.placement = "outside",
-        strip.text.y.left = element_text(angle = 0))
+df_temp %>%
+  filter(var %in% 
+           c("GHQ_W2_Caseness", "GenHealth_W2", "Disabled_W2")) %>%
+  neet_plot("neet_health")
+
+df_temp %>%
+  filter(var %in% 
+           c("IMD_W2", "ParentEduc5_W1", "GParentUni_W1", "NSSEC3_W1")) %>%
+  neet_plot("neet_sep")
+
+df_temp %>%
+  filter(var %in% 
+           c("Risk_W1" , "SchoolAtt_W2" ,  "LOC_Factor_W2")) %>%
+  neet_plot("neet_risk")
+
+df_temp %>%
+  filter(var %in% 
+           c("Education_W8")) %>%
+  neet_plot("neet_edu")
 
 
 # b. Cluster Membership 
+cluster4_plot <- function(df, file_name = NULL, height = 9.9){
+  strip_labels <- df %>% 
+    select(var_clean, cat_clean) %>% 
+    distinct() %>%
+    mutate(across(1:2, as.character),
+           strip_label = ifelse(var_clean == cat_clean, "", var_clean)) %>%
+    select(var_clean, strip_label) %>%
+    deframe()
+  
+  p <- ggplot(df) +
+    aes(x = cat_clean, y = beta, ymin = lci, ymax = uci,
+        color = str_replace_all(part, "_", " ")) +
+    geom_hline(yintercept = 1) +
+    geom_pointrange(position = position_dodge(0.6)) +
+    scale_color_brewer(palette = "Dark2") +
+    coord_flip() +
+    facet_grid(var_clean ~ ., scales = "free", switch = "y",
+               labeller = labeller(var_clean = strip_labels)) +
+    labs(x = NULL, y = "Odds Ratio", color = "Cluster") +
+    theme_minimal() +
+    theme(strip.placement = "outside",
+          strip.text.y.left = element_text(angle = 0),
+          legend.position = c(.85,.85))
+  if (!is.null(file_name)){
+    file_name <- paste0("Images/", file_name, ".png")
+    ggsave(filename = file_name, plot = p,
+           dpi = 600, height = height, width = 21, units = "cm")
+  }
+  p
+}
+
+
 df_temp <- regsave %>%
   filter(outcome == "cluster4", type == "mi",
          !(var %in% c("_cons", "Education_W8")))
 
-strip_labels <- df_temp %>% 
-  select(var_clean, cat_clean) %>% 
-  distinct() %>%
-  mutate(across(1:2, as.character),
-         strip_label = ifelse(var_clean == cat_clean, "", var_clean)) %>%
-  select(var_clean, strip_label) %>%
-  deframe()
-  
-ggplot(df_temp) +
-  aes(x = cat_clean, y = beta, ymin = lci, ymax = uci,
-      color = str_replace_all(part, "_", " ")) +
-  geom_hline(yintercept = 1) +
-  geom_pointrange(position = position_dodge(0.6)) +
-  scale_color_brewer(palette = "Dark2") +
-  coord_flip() +
-  facet_grid(var_clean ~ ., scales = "free", switch = "y",
-             labeller = labeller(var_clean = strip_labels)) +
-  labs(x = NULL, y = "Odds Ratio", color = "Cluster") +
-  theme_minimal() +
-  theme(strip.placement = "outside",
-        strip.text.y.left = element_text(angle = 0),
-        legend.position = c(.85,.85))
+df_temp %>%
+  filter(str_detect(var, "Child") |
+           str_detect(var, "Female")) %>%
+  cluster4_plot("cluster4_gender_child")
+
+df_temp %>%
+  filter(var %in% 
+           c("Any_VET", "NonWhite", "ForLangHH_W1", "HHType_W1")) %>%
+  cluster4_plot("cluster4_vet_household")
+
+df_temp %>%
+  filter(var %in% 
+           c("GHQ_W2_Caseness", "GenHealth_W2", "Disabled_W2")) %>%
+  cluster4_plot("cluster4_health")
+
+df_temp %>%
+  filter(var %in% 
+           c("IMD_W2", "ParentEduc5_W1", "GParentUni_W1", "NSSEC3_W1")) %>%
+  cluster4_plot("cluster4_sep")
+
+df_temp %>%
+  filter(var %in% 
+           c("Risk_W1" , "SchoolAtt_W2" ,  "LOC_Factor_W2")) %>%
+  cluster4_plot("cluster4_edu_risk")
   
 # c. Age 25 Outcomes
-hlines <- regsave %>%
-  mutate(intercept = ifelse(estimator %in% c("heckman", "reg"), 0, 1)) %>%
-  select(outcome_clean, intercept) %>%
-  distinct()
+age25_plot <- function(df, file_name = NULL, height = 9.9){
+  
+  hlines <- df %>%
+    mutate(intercept = ifelse(estimator %in% c("heckman", "reg"), 0, 1)) %>%
+    select(outcome_clean, intercept) %>%
+    distinct()
+  
+  p <- ggplot(df) +
+    aes(x = cat_clean, y = beta, ymin = lci, ymax = uci,
+        color = cat_clean) +
+    geom_hline(data = filter(hlines, str_detect(outcome_clean, "NEET", TRUE)),
+               mapping = aes(yintercept = intercept)) +
+    geom_pointrange(position = position_dodge(0.5)) +
+    facet_grid(outcome_clean ~ ., scales = "free", switch = "y") +
+    scale_color_brewer(palette = "Set1") +
+    theme_minimal() +
+    guides(color = FALSE) +
+    labs(x = NULL, y = NULL) +
+    theme(strip.placement = "outside",
+          strip.text.y.left = element_text(angle = 0),
+          panel.spacing.y = unit(1.5, "lines"))
+  
+  if (!is.null(file_name)){
+    file_name <- paste0("Images/", file_name, ".png")
+    ggsave(filename = file_name, plot = p,
+           dpi = 600, height = height, width = 21, units = "cm")
+  }
+  p
+}
 
-regsave %>%
+df_temp <- regsave %>%
   filter(var %in% c("cluster4", "Any_NEET"),
          type == "mi") %>%
-  filter(Months_NEET) %>% 
-  ggplot() +
-  aes(x = cat_clean, y = beta, ymin = lci, ymax = uci,
-      color = cat_clean) +
-  geom_hline(data = filter(hlines, str_detect(outcome_clean, "NEET", TRUE)),
-             mapping = aes(yintercept = intercept)) +
-  geom_pointrange(position = position_dodge(0.5)) +
-  facet_grid(outcome_clean ~ ., scales = "free", switch = "y") +
-  scale_color_brewer(palette = "Set1") +
-  theme_minimal() +
-  guides(color = FALSE) +
-  labs(x = NULL, y = NULL) +
-  theme(strip.placement = "outside",
-        strip.text.y.left = element_text(angle = 0),
-        panel.spacing.y = unit(1.5, "lines"))
+  filter(Months_NEET)
+
+df_temp$outcome %>% unique()
+
+df_temp %>%
+  filter(outcome %in% 
+           c("Precarious_W8", "ShiftWork_W8",  "LogPay_W8", 
+             "FinDiff_W8", "Employed_W8")) %>%
+  age25_plot("age25_finance")
+
+df_temp %>%
+  filter(outcome %in% 
+           c("PoorHealth_W8", "AUDIT_W8",
+             "LifeSat_W8", "GHQ_W8_Likert")) %>%
+  age25_plot("age25_health")
+
+df_temp %>%
+  filter(outcome %in% 
+           c("Adult_W8", "LOC_Factor_W8")) %>%
+  age25_plot("age25_adult")
 
 
 # 4. Regression Tables ----
@@ -322,6 +425,7 @@ reg_tbl$neet <- df_coefs %>%
   get_coefs(c(1, 2, 9, 8, 7, 4, 5, 6)) %>%
   make_table()
 reg_tbl$neet
+save_as_docx(reg_tbl$neet, path = "Tables/predict_neet.docx")
 
 
 # b. Predicting Age 25 Outcomes
@@ -331,6 +435,7 @@ reg_tbl$age25_neet <- df_coefs %>%
   get_coefs(c(1, 2, 9, 6, 8, 5, 4, 7, 14, 13, 11, 10, 12)) %>%
   make_table()
 reg_tbl$age25_neet
+save_as_docx(reg_tbl$age25_neet, path = "Tables/predict_age25_neet.docx")
 
 # c. Predicting Age 25 Outcomes
 reg_tbl$age25_cluster <- df_coefs %>%
@@ -339,3 +444,4 @@ reg_tbl$age25_cluster <- df_coefs %>%
   get_coefs(c(1, 2, 9, 6, 8, 5, 4, 7, 14, 13, 11, 10, 12)) %>%
   make_table()
 reg_tbl$age25_cluster
+save_as_docx(reg_tbl$age25_cluster4, path = "Tables/predict_age25_cluster.docx")

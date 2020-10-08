@@ -101,16 +101,25 @@ get_freq <- function(df, norm = 40){
   bind_rows(df_freq, df_cont)
 }
 
-df_desc <- bind_rows(all = imp_long %>%
-                       filter(imp>0) %>%
-                       get_freq(),
-                     neet = imp_long %>%
-                       filter(imp>0, Months_NEET > 0) %>%
-                       get_freq(),
-                     not_neet = imp_long %>%
-                       filter(imp>0, Months_NEET == 0) %>%
-                       get_freq(),
-                     .id = "sample") %>%
+df_desc <- c(into_employment = "Into Employment",
+             cyclers = "Cyclers",
+             high_ed = "Higher Education",
+             long_neet = "Long-Term NEET") %>%
+  map_dfr(~ imp_long %>%
+            filter(imp > 0,
+                   cluster4 == .x) %>%
+            get_freq(),
+          .id = "sample") %>%
+  bind_rows(bind_rows(all = imp_long %>%
+                        filter(imp>0) %>%
+                        get_freq(),
+                      neet = imp_long %>%
+                        filter(imp>0, Months_NEET > 0) %>%
+                        get_freq(),
+                      not_neet = imp_long %>%
+                        filter(imp>0, Months_NEET == 0) %>%
+                        get_freq(),
+                      .id = "sample")) %>%
   filter(!(cat %in% c("<NA>", "No")), 
          !(var %in% c("imp", "cluster4", "Any_NEET")),
          str_detect(var, "W8", TRUE) | 
@@ -119,16 +128,18 @@ df_desc <- bind_rows(all = imp_long %>%
   left_join(lbl_clean, by= c("var", "cat")) %>%
   arrange(index)
 
-
 desc_tbl <- df_desc %>%
-  select(var_clean, cat_clean, all, neet, not_neet) %>%
+  select(var_clean, cat_clean, all, not_neet, neet,
+         high_ed, cyclers, into_employment, long_neet) %>%
   mutate(across(c(var_clean, cat_clean), as.character)) %>%
   mutate(var_clean = ifelse(var_clean == cat_clean, "", var_clean)) %>%
   flextable() %>%
   merge_v(1) %>%
   set_header_labels(var_clean = "", cat_clean = "Variable",
                     all = "Full Sample", neet = "1+ Months NEET", 
-                    not_neet = "0 Months NEET") %>%
+                    not_neet = "0 Months NEET", into_employment = "Into Employment",
+                    cyclers = "Cyclers", high_ed = "Higher Education",
+                    long_neet = "Long-Term NEET" ) %>%
   border_remove() %>%
   fontsize(size = 11, part = "all") %>%
   merge_h(part = "header") %>%
@@ -137,7 +148,7 @@ desc_tbl <- df_desc %>%
   hline_bottom(border = fp_border(color="black", width = 2), part = "all") %>%
   fix_border_issues(part = "all") %>%
   align(j = 1:2, align="right", part = "all") %>%
-  align(j = 3:5, align="center", part = "all") %>%
+  align(j = 3:9, align="center", part = "all") %>%
   valign(j = 1, valign = "top") %>%
   autofit()
 desc_tbl
@@ -148,7 +159,8 @@ wtd_vars <- imp_long %>%
   select(where(is.numeric)) %>%
   pivot_longer(-Survey_Weight_W8) %>%
   group_by(name) %>%
-  summarise(var = wtd.var(value, Survey_Weight_W8) %>% sqrt()) %>%
+  summarise(var = wtd.var(value, Survey_Weight_W8) %>% sqrt(),
+            .groups = "drop") %>%
   deframe()
 
 
@@ -220,6 +232,9 @@ df_temp <- regsave %>%
          type == "mi", var != "_cons")
 
 df_temp %>%
+  neet_plot("neet_all_vars", 29.7)
+
+df_temp %>%
   filter(str_detect(var, "Child") |
            str_detect(var, "Female")) %>%
   neet_plot("neet_gender_child")
@@ -288,6 +303,9 @@ df_temp <- regsave %>%
          !(var %in% c("_cons", "Education_W8")))
 
 df_temp %>%
+  cluster4_plot("cluster4_all_vars", 29.7)
+
+df_temp %>%
   filter(str_detect(var, "Child") |
            str_detect(var, "Female")) %>%
   cluster4_plot("cluster4_gender_child")
@@ -310,7 +328,7 @@ df_temp %>%
 df_temp %>%
   filter(var %in% 
            c("Risk_W1" , "SchoolAtt_W2" ,  "LOC_Factor_W2")) %>%
-  cluster4_plot("cluster4_edu_risk")
+  cluster4_plot("cluster4_risk")
   
 # c. Age 25 Outcomes
 age25_plot <- function(df, file_name = NULL, height = 9.9){
@@ -351,16 +369,19 @@ df_temp <- regsave %>%
 df_temp$outcome %>% unique()
 
 df_temp %>%
+  age25_plot("age25_all_vars", 29.7)
+
+df_temp %>%
   filter(outcome %in% 
            c("Precarious_W8", "ShiftWork_W8",  "LogPay_W8", 
              "FinDiff_W8", "Employed_W8")) %>%
-  age25_plot("age25_finance")
+  age25_plot("age25_finance", 19.8)
 
 df_temp %>%
   filter(outcome %in% 
            c("PoorHealth_W8", "AUDIT_W8",
              "LifeSat_W8", "GHQ_W8_Likert")) %>%
-  age25_plot("age25_health")
+  age25_plot("age25_health", 19.8)
 
 df_temp %>%
   filter(outcome %in% 
@@ -438,10 +459,10 @@ reg_tbl$age25_neet
 save_as_docx(reg_tbl$age25_neet, path = "Tables/predict_age25_neet.docx")
 
 # c. Predicting Age 25 Outcomes
-reg_tbl$age25_cluster <- df_coefs %>%
+reg_tbl$age25_cluster4 <- df_coefs %>%
   filter(!(outcome %in% c("Any_NEET", "Months_NEET", "cluster4")),
          type == "mi", Months_NEET, cluster4) %>%
   get_coefs(c(1, 2, 9, 6, 8, 5, 4, 7, 14, 13, 11, 10, 12)) %>%
   make_table()
-reg_tbl$age25_cluster
+reg_tbl$age25_cluster4
 save_as_docx(reg_tbl$age25_cluster4, path = "Tables/predict_age25_cluster.docx")

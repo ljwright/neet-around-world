@@ -78,7 +78,8 @@ prog_observed Months_NEET
 prog_regsave Months_NEET zinb FALSE FALSE FALSE `mi'
 
 prog_observed cluster4	
-`svy': mlogit cluster4 $covars if observed == 1 & Any_NEET == 1, rrr baseoutcome(2)
+local covars: subinstr global covars "i.Education_W8" ""
+`svy': mlogit cluster4 `covars' if observed == 1 & Any_NEET == 1, rrr baseoutcome(2)
 prog_regsave cluster4 mlogit FALSE FALSE FALSE `mi' 
 
 

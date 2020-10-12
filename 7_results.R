@@ -13,6 +13,14 @@ rm(list=ls())
 # 1. Set-Up ----
 load("Data/mice.Rdata")
 
+imp_long <- imp_long %>%
+  mutate(FemalexChild = case_when(Female == "No" & Child_W8 == "No" ~ "Male, No Child",
+                                  Female == "Yes" & Child_W8 == "No" ~ "Female, No Child",
+                                  Female == "No" & Child_W8 == "Yes" ~ "Male, with Child",
+                                  Female == "Yes" & Child_W8 == "Yes" ~ "Female, with Child") %>%
+           factor(c("Male, No Child", "Female, No Child", "Male, with Child", "Female, with Child")))
+
+
 lbl_clean <- c(Any_NEET = "1+ Months NEET",
   Months_NEET = "Months NEET",
   cluster4 = "NEET Cluster",
@@ -29,7 +37,9 @@ lbl_clean <- c(Any_NEET = "1+ Months NEET",
   ShiftWork_W8 = "Shift Work",
   Female = "Female",
   Child_W8 = "Has Child",
+  FemalexChild = "Gender x Child",
   FirstChild = "Age at First Birth",
+  FemalexFirstChild = "Female x Age at First Birth",
   "Female#2.Child_W8" = "Female x Has Child",
   "Female#c.FirstChild" = "Female x Age at First Birth",
   NonWhite = "Non-White",
@@ -466,3 +476,38 @@ reg_tbl$age25_cluster4 <- df_coefs %>%
   make_table()
 reg_tbl$age25_cluster4
 save_as_docx(reg_tbl$age25_cluster4, path = "Tables/predict_age25_cluster.docx")
+
+
+# 5. AME Plots ----
+df_ame <- read_dta("Data/regsave_ame.dta") %>%
+  filter(coef != 0, str_detect(var, "/", TRUE)) %>%
+  separate(var, c("var", "part"), sep = ":", fill = "right") %>%
+  mutate(part = ifelse(is.na(part), outcome, part),
+         var = str_replace(var, "1.Any_NEET", "2.Any_NEET")) %>%
+  separate(var, c("level", "var"), sep = "\\.", fill = "left", 
+           extra = "merge", convert = TRUE) %>%
+  mutate(level = ifelse(is.na(level), 1, level),
+         level = ifelse(var == "FemalexChild", level+1, level),
+         level = ifelse(str_detect(var, "\\#"), 1, level)) %>%
+  rename(beta = coef, se = stderr, p = pval, 
+         lci = ci_lower, uci = ci_upper, n = N) %>%
+  filter(!(part == "Employed_W8" & str_detect(estimator, "^heck"))) %>%
+  mutate(across(c(Any_NEET, Months_NEET, cluster4), as.logical), 
+         string = glue("{round(beta, 2)}\n({round(lci, 2)}, {round(uci, 2)})")) %>%
+  left_join(lbl_clean, by = c("var", "level")) %>%
+  left_join(lbl_clean %>%
+              select(outcome = var, 
+                     outcome_clean = var_clean), by = "outcome")
+
+df_temp <- df_ame %>%
+  filter(outcome %in% c("Months_NEET", "Any_NEET"),
+         part != "inflate",
+         type == "mi", var != "_cons")
+
+
+df_temp$outcome %>% unique()
+
+df_temp %>%
+  neet_plot()
+# ADD HLINE OPTION; CHANGE FACET_GRID OPTION TO SPACE = FREE_Y
+# standardize continuous?

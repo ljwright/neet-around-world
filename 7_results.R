@@ -201,11 +201,43 @@ regsave <- read_dta("Data/regsave.dta") %>%
                      outcome_clean = var_clean), by = "outcome")
 
 
+cluster4_lvls <- levels(imp_long$cluster4)[2:5]
+
+clean_part <- function(str){
+  num <- str_sub(str, 1, 1) %>% as.numeric()
+  cluster4_lvls[num]
+}
+
+df_ame <- bind_rows(read_dta("Data/regsave_ame.dta") %>%
+                      filter(!(outcome %in% c("cluster4", "Months_NEET", "Any_NEET"))),
+                    read_dta("Data/regsave_ame2.dta") %>%
+                      filter(outcome %in% c("cluster4", "Months_NEET", "Any_NEET"))) %>% 
+  filter(coef != 0, str_detect(var, "/", TRUE)) %>%
+  separate(var, c("var", "part"), sep = ":", fill = "right") %>%
+  mutate(part = ifelse(is.na(part), outcome, part),
+         var = str_replace(var, "1.Any_NEET", "2.Any_NEET")) %>%
+  separate(var, c("level", "var"), sep = "\\.", fill = "left", 
+           extra = "merge", convert = TRUE) %>%
+  mutate(level = ifelse(is.na(level), 1, level),
+         level = ifelse(var == "FemalexChild", level+1, level),
+         level = ifelse(str_detect(var, "\\#"), 1, level)) %>%
+  rename(beta = coef, se = stderr, p = pval, 
+         lci = ci_lower, uci = ci_upper, n = N) %>%
+  filter(!(part == "Employed_W8" & str_detect(estimator, "^heck"))) %>%
+  mutate(across(c(Any_NEET, Months_NEET, cluster4), as.logical), 
+         string = glue("{round(beta, 2)}\n({round(lci, 2)}, {round(uci, 2)})")) %>%
+  left_join(lbl_clean, by = c("var", "level")) %>%
+  left_join(lbl_clean %>%
+              select(outcome = var, 
+                     outcome_clean = var_clean), by = "outcome") %>%
+  mutate(part_x = clean_part(part),
+         part = ifelse(outcome == "cluster4", part_x, part))
+
 # 3. Regression Plots ----
 # a. Any NEET / Months NEET
-neet_plot <- function(df, file_name = NULL, height = 9.9){
+neet_plot <- function(df, file_name = NULL, height = 9.9, y_int = c(1, 1)){
   hlines <- tibble(outcome_clean = c("1+ Months NEET", "Months NEET"),
-                   yint = rep(1, 2))
+                   yint = y_int)
   
   strip_labels <- df %>% 
     select(var_clean, cat_clean) %>% 
@@ -222,7 +254,8 @@ neet_plot <- function(df, file_name = NULL, height = 9.9){
     geom_pointrange(position = position_dodge(0.6)) +
     scale_color_brewer(palette = "Dark2") +
     coord_flip() +
-    facet_grid(var_clean ~ outcome_clean, scales = "free", switch = "y",
+    facet_grid(var_clean ~ outcome_clean, scales = "free", 
+               space = "free_y", switch = "y",
                labeller = labeller(var_clean = strip_labels)) +
     labs(x = NULL, y = NULL) +
     guides(color = FALSE) +
@@ -230,53 +263,73 @@ neet_plot <- function(df, file_name = NULL, height = 9.9){
     theme(strip.placement = "outside",
           strip.text.y.left = element_text(angle = 0))
   if (!is.null(file_name)){
-    file_name <- paste0("Images/", file_name, ".png")
+    file_name <- glue(file_name) %>%
+      paste0("Images/", ., ".png")
     ggsave(filename = file_name, plot = p,
            dpi = 600, height = height, width = 21, units = "cm")
   }
   p
 }
+
+neet_plots <- function(df_temp, ame = FALSE){
+  if (ame == TRUE){
+    fle <- "ame_"
+    y_int = c(0, 0)
+  } else{
+    fle <- ""
+    y_int = c(1, 1)
+  }
+  
+  df_temp %>%
+    neet_plot(glue("neet_{fle}all_vars"), 29.7, y_int = y_int)
+  
+  df_temp %>%
+    filter(str_detect(var, "Child") |
+             str_detect(var, "Female")) %>%
+    neet_plot(glue("neet_{fle}gender_child"), y_int = y_int)
+  
+  df_temp %>%
+    filter(var %in% 
+             c("Any_VET", "NonWhite", "ForLangHH_W1", "HHType_W1")) %>%
+    neet_plot(glue("neet_{fle}vet_household"), y_int = y_int)
+  
+  df_temp %>%
+    filter(var %in% 
+             c("GHQ_W2_Caseness", "GenHealth_W2", "Disabled_W2")) %>%
+    neet_plot(glue("neet_{fle}health"), y_int = y_int)
+  
+  df_temp %>%
+    filter(var %in% 
+             c("IMD_W2", "ParentEduc5_W1", "GParentUni_W1", "NSSEC3_W1")) %>%
+    neet_plot(glue("neet_{fle}sep"), y_int = y_int)
+  
+  df_temp %>%
+    filter(var %in% 
+             c("Risk_W1" , "SchoolAtt_W2" ,  "LOC_Factor_W2")) %>%
+    neet_plot(glue("neet_{fle}risk"), y_int = y_int)
+  
+  df_temp %>%
+    filter(var %in% 
+             c("Education_W8")) %>%
+    neet_plot(glue("neet_{fle}edu"), y_int = y_int)
+}
+
+
 df_temp <- regsave %>%
   filter(outcome %in% c("Months_NEET", "Any_NEET"),
          part != "inflate",
          type == "mi", var != "_cons")
+neet_plots(df_temp)
 
-df_temp %>%
-  neet_plot("neet_all_vars", 29.7)
 
-df_temp %>%
-  filter(str_detect(var, "Child") |
-           str_detect(var, "Female")) %>%
-  neet_plot("neet_gender_child")
-
-df_temp %>%
-  filter(var %in% 
-           c("Any_VET", "NonWhite", "ForLangHH_W1", "HHType_W1")) %>%
-  neet_plot("neet_vet_household")
-
-df_temp %>%
-  filter(var %in% 
-           c("GHQ_W2_Caseness", "GenHealth_W2", "Disabled_W2")) %>%
-  neet_plot("neet_health")
-
-df_temp %>%
-  filter(var %in% 
-           c("IMD_W2", "ParentEduc5_W1", "GParentUni_W1", "NSSEC3_W1")) %>%
-  neet_plot("neet_sep")
-
-df_temp %>%
-  filter(var %in% 
-           c("Risk_W1" , "SchoolAtt_W2" ,  "LOC_Factor_W2")) %>%
-  neet_plot("neet_risk")
-
-df_temp %>%
-  filter(var %in% 
-           c("Education_W8")) %>%
-  neet_plot("neet_edu")
+df_temp <- df_ame %>%
+  filter(outcome %in% c("Months_NEET", "Any_NEET"),
+         type == "mi", var != "_cons")
+neet_plots(df_temp, TRUE)
 
 
 # b. Cluster Membership 
-cluster4_plot <- function(df, file_name = NULL, height = 9.9){
+cluster4_plot <- function(df, file_name = NULL, height = 9.9, y_int = 1, y_title = "Odds Ratio"){
   strip_labels <- df %>% 
     select(var_clean, cat_clean) %>% 
     distinct() %>%
@@ -288,11 +341,11 @@ cluster4_plot <- function(df, file_name = NULL, height = 9.9){
   p <- ggplot(df) +
     aes(x = cat_clean, y = beta, ymin = lci, ymax = uci,
         color = str_replace_all(part, "_", " ")) +
-    geom_hline(yintercept = 1) +
+    geom_hline(yintercept = y_int) +
     geom_pointrange(position = position_dodge(0.6)) +
     scale_color_brewer(palette = "Dark2") +
     coord_flip() +
-    facet_grid(var_clean ~ ., scales = "free", switch = "y",
+    facet_grid(var_clean ~ ., scales = "free", switch = "y", space = "free_y",
                labeller = labeller(var_clean = strip_labels)) +
     labs(x = NULL, y = "Odds Ratio", color = "Cluster") +
     theme_minimal() +
@@ -300,53 +353,85 @@ cluster4_plot <- function(df, file_name = NULL, height = 9.9){
           strip.text.y.left = element_text(angle = 0),
           legend.position = c(.85,.85))
   if (!is.null(file_name)){
-    file_name <- paste0("Images/", file_name, ".png")
+    file_name <- glue(file_name) %>%
+      paste0("Images/", ., ".png")
     ggsave(filename = file_name, plot = p,
            dpi = 600, height = height, width = 21, units = "cm")
   }
   p
 }
 
+cluster_plots <- function(df_temp, ame = FALSE){
+  if (ame == TRUE){
+    fle <- "ame_"
+    y_int <- 0
+    y_title <- NULL
+  } else{
+    fle <- ""
+    y_int <- 1
+    y_title <- "Odds Ratio"
+  }
+
+  df_temp %>%
+    cluster4_plot(glue("cluster4_{fle}all_vars"), 29.7, 
+                  y_int, y_title)
+  
+  df_temp %>%
+    filter(str_detect(var, "Child") |
+             str_detect(var, "Female")) %>%
+    cluster4_plot(glue("cluster4_{fle}gender_child"),
+                  y_int = y_int, y_title = y_title)
+  
+  df_temp %>%
+    filter(var %in% 
+             c("Any_VET", "NonWhite", "ForLangHH_W1", "HHType_W1")) %>%
+    cluster4_plot(glue("cluster4_{fle}vet_household"),
+                  y_int = y_int, y_title = y_title)
+  
+  df_temp %>%
+    filter(var %in% 
+             c("GHQ_W2_Caseness", "GenHealth_W2", "Disabled_W2")) %>%
+    cluster4_plot(glue("cluster4_{fle}health"),
+                  y_int = y_int, y_title = y_title)
+  
+  df_temp %>%
+    filter(var %in% 
+             c("IMD_W2", "ParentEduc5_W1", "GParentUni_W1", "NSSEC3_W1")) %>%
+    cluster4_plot(glue("cluster4_{fle}sep"),
+                  y_int = y_int, y_title = y_title)
+  
+  df_temp %>%
+    filter(var %in% 
+             c("Risk_W1" , "SchoolAtt_W2" ,  "LOC_Factor_W2")) %>%
+    cluster4_plot(glue("cluster4_{fle}risk"),
+                  y_int = y_int, y_title = y_title)
+  
+}
 
 df_temp <- regsave %>%
   filter(outcome == "cluster4", type == "mi",
          !(var %in% c("_cons", "Education_W8")))
+cluster_plots(df_temp)
 
-df_temp %>%
-  cluster4_plot("cluster4_all_vars", 29.7)
 
-df_temp %>%
-  filter(str_detect(var, "Child") |
-           str_detect(var, "Female")) %>%
-  cluster4_plot("cluster4_gender_child")
+df_temp <- df_ame %>%
+  filter(outcome == "cluster4", type == "mi",
+         !(var %in% c("_cons", "Education_W8")))
+cluster_plots(df_temp, TRUE)
 
-df_temp %>%
-  filter(var %in% 
-           c("Any_VET", "NonWhite", "ForLangHH_W1", "HHType_W1")) %>%
-  cluster4_plot("cluster4_vet_household")
-
-df_temp %>%
-  filter(var %in% 
-           c("GHQ_W2_Caseness", "GenHealth_W2", "Disabled_W2")) %>%
-  cluster4_plot("cluster4_health")
-
-df_temp %>%
-  filter(var %in% 
-           c("IMD_W2", "ParentEduc5_W1", "GParentUni_W1", "NSSEC3_W1")) %>%
-  cluster4_plot("cluster4_sep")
-
-df_temp %>%
-  filter(var %in% 
-           c("Risk_W1" , "SchoolAtt_W2" ,  "LOC_Factor_W2")) %>%
-  cluster4_plot("cluster4_risk")
   
 # c. Age 25 Outcomes
-age25_plot <- function(df, file_name = NULL, height = 9.9){
+age25_plot <- function(df, file_name = NULL, height = 9.9, ame = FALSE){
   
   hlines <- df %>%
     mutate(intercept = ifelse(estimator %in% c("heckman", "reg"), 0, 1)) %>%
     select(outcome_clean, intercept) %>%
     distinct()
+  
+  if (ame == TRUE){
+    hlines <- hlines %>%
+      mutate(intercept = 0)
+  }
   
   p <- ggplot(df) +
     aes(x = cat_clean, y = beta, ymin = lci, ymax = uci,
@@ -371,32 +456,45 @@ age25_plot <- function(df, file_name = NULL, height = 9.9){
   p
 }
 
+age25_plots <- function(df_temp, ame = FALSE){
+    if (ame == TRUE){
+      fle <- "ame_"
+    } else{
+      fle <- ""
+    }
+  
+  df_temp %>%
+    age25_plot(glue("age25_{fle}all_vars"), 29.7, ame)
+  
+  df_temp %>%
+    filter(outcome %in% 
+             c("Precarious_W8", "ShiftWork_W8",  "LogPay_W8", 
+               "FinDiff_W8", "Employed_W8")) %>%
+    age25_plot(glue("age25_{fle}finance"), 19.8, ame)
+  
+  df_temp %>%
+    filter(outcome %in% 
+             c("PoorHealth_W8", "AUDIT_W8",
+               "LifeSat_W8", "GHQ_W8_Likert")) %>%
+    age25_plot(glue("age25_{fle}health"), 19.8, ame)
+  
+  df_temp %>%
+    filter(outcome %in% 
+             c("Adult_W8", "LOC_Factor_W8")) %>%
+    age25_plot(glue("age25_{fle}adult"), ame = ame)
+  
+}
 df_temp <- regsave %>%
   filter(var %in% c("cluster4", "Any_NEET"),
          type == "mi") %>%
   filter(Months_NEET)
+age25_plots(df_temp)
 
-df_temp$outcome %>% unique()
-
-df_temp %>%
-  age25_plot("age25_all_vars", 29.7)
-
-df_temp %>%
-  filter(outcome %in% 
-           c("Precarious_W8", "ShiftWork_W8",  "LogPay_W8", 
-             "FinDiff_W8", "Employed_W8")) %>%
-  age25_plot("age25_finance", 19.8)
-
-df_temp %>%
-  filter(outcome %in% 
-           c("PoorHealth_W8", "AUDIT_W8",
-             "LifeSat_W8", "GHQ_W8_Likert")) %>%
-  age25_plot("age25_health", 19.8)
-
-df_temp %>%
-  filter(outcome %in% 
-           c("Adult_W8", "LOC_Factor_W8")) %>%
-  age25_plot("age25_adult")
+df_temp <- df_ame %>%
+  filter(var %in% c("cluster4", "Any_NEET"),
+         type == "mi") %>%
+  filter(Months_NEET)
+age25_plots(df_temp, TRUE)
 
 
 # 4. Regression Tables ----

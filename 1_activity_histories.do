@@ -1,6 +1,6 @@
 clear
 set more off
-cd "D:\Next Steps 1-8"
+cd "F:\Next Steps 1-8"
 
 * 1. Set Macros ----
 global stata_fld	"stata11"
@@ -44,14 +44,15 @@ save "`Wave7'", replace
 
 
 * Wave 8
-use "${stata_fld}\ns8_2015_main_interview", clear
+use NSID W8INT* W8START* W8DACTIVITY ///
+	using "${stata_fld}\ns8_2015_main_interview", clear
 numlabel, add
 prog_startdates W8INTMTH W8INTYEAR
 rename Start_* IntDate_*
 prog_startdates W8STARTM W8STARTY
 gen Act=.
 replace Act=1 if inlist(W8DACTIVITY,6,7)
-replace Act=2 if inrange(W8DACTIVITY,1,4) | W8DACTIVITY==11 	// WHAT TO DO WITH UNPAID/VOLUNTARY WORK?
+replace Act=2 if inrange(W8DACTIVITY,1,4) | W8DACTIVITY==11
 replace Act=3 if inlist(W8DACTIVITY,8,12)
 replace Act=4 if inlist(W8DACTIVITY,5,9,10,13,14)
 gen Spell=0

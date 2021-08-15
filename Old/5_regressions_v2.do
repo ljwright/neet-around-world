@@ -119,30 +119,32 @@ foreach glb in reg logit {
 	}
 	
 foreach glb in heckman heckprobit {
-	
-	local maximize = cond("`glb'" == "heckprobit", "iterate(500)", "")
-	
 	foreach var of global `glb' {
 		
 		capture drop select_var
 		gen select_var = 1 if Employed_W8 == 0 | (Employed_W8==1 & !missing(`var'))
 		prog_observed select_var `dta_type'
 		
-		`svy': `glb' `var' i.Any_NEET $covars if observed==1, ///
-			select(Employed_W8 = i.Any_NEET ${covars}) `maximize'
-		prog_regsave `var' `glb' TRUE FALSE FALSE `mi'	
-		
-		`svy': `glb' `var' i.neet_cluster $covars if observed==1, ///
-			select(Employed_W8 = i.neet_cluster ${covars}) `maximize'
-		prog_regsave `var' `glb' FALSE FALSE TRUE `mi'
-			
-		`svy': `glb' `var' i.Any_NEET c.Months_NEET $covars if observed==1, ///
-			select(Employed_W8 = i.Any_NEET c.Months_NEET ${covars}) `maximize'
-		prog_regsave `var' `glb' TRUE TRUE FALSE `mi'		
-		
-		`svy': `glb' `var' i.neet_cluster c.Months_NEET $covars if observed==1, ///
-			select(Employed_W8 = i.neet_cluster c.Months_NEET ${covars}) `maximize'
-		prog_regsave `var' `glb' FALSE TRUE TRUE `mi'
+		capture{
+			`svy': `glb' `var' i.Any_NEET $covars if observed==1, ///
+				select(Employed_W8 = i.Any_NEET $covars)
+			prog_regsave `var' `glb' TRUE FALSE FALSE `mi'	
+		}
+		capture{
+			`svy': `glb' `var' i.neet_cluster $covars if observed==1, ///
+				select(Employed_W8 = i.neet_cluster $covars)
+			prog_regsave `var' `glb' FALSE FALSE TRUE `mi'
+		}
+		capture{
+			`svy': `glb' `var' i.Any_NEET c.Months_NEET $covars if observed==1, ///
+				select(Employed_W8 = i.Any_NEET c.Months_NEET $covars)
+			prog_regsave `var' `glb' TRUE TRUE FALSE `mi'	
+		}
+		capture{
+			`svy': `glb' `var' i.neet_cluster c.Months_NEET $covars if observed==1, ///
+				select(Employed_W8 = i.neet_cluster c.Months_NEET $covars)
+			prog_regsave `var' `glb' FALSE TRUE TRUE `mi'
+		}
 		}
 	}
 }

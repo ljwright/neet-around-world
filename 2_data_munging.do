@@ -1,6 +1,6 @@
 clear
 set more off
-cd "D:\Next Steps 1-8"
+cd "F:\Next Steps 1-8"
 
 * 1. Set Macros ----
 global stata_fld	"stata11"
@@ -96,7 +96,6 @@ replace Female = cond(Female>0, Female - 1,.)
 egen Ethnicity=rowmax(w?ethgrpyp)
 gen NonWhite = (Ethnicity!=1) if !missing(Ethnicity) & Ethnicity>0
 
-
 gen Birth_MY=ym(dobyearyp, dobmonthyp)
 replace Birth_MY=ym(w8bdaty, w8bdatm) if missing(Birth_MY)
 gen Survey_Boost=(w4boost==1)
@@ -184,8 +183,9 @@ foreach type in Int Ext{
 	}
 }
 
-gen GenHealth_W2 = w2hea1cyp - 2 if inrange(w2hea1cyp,3,6)
-label define GenHealth 1 "Very Good" 2 "Fairly Good" 3 "Not Very Good" 4 "Not Good at All"
+gen GenHealth_W2 = w2hea1cyp - 2 if inrange(w2hea1cyp,3,5)
+replace GenHealth_W2 = 3 if w2hea1cyp == 6
+label define GenHealth 1 "Very Good" 2 "Fairly Good" 3 "Not Good"
 label values GenHealth* GenHealth
 
 gen GHQ_W2_Caseness=w2ghq12scr if inrange(w2ghq12scr, 0, 12)
@@ -195,7 +195,7 @@ label values Disabled_W2 Binary
 
 gen IMD_W2=imdrscore if inrange(imdrscore,0,100)
 
-	* Wave 1
+* Wave 1
 gen Risk_W1 = w1risk if inrange(w1risk,0,8)
 
 gen NSSEC8_W1 = w1nssecfam if inrange(w1nssecfam,1,8)

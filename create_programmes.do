@@ -1,4 +1,3 @@
-* 3. Create Programs
 capture program drop prog_date_setup
 program define prog_date_setup
 	foreach stub in `*'{

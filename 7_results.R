@@ -6,13 +6,15 @@ library(Hmisc)
 library(summarytools)
 library(flextable)
 library(officer)
+library(gallimaufr)
 
-setwd("D:/Next Steps 1-8/Projects/NEET Book")
 rm(list=ls())
 
 # 1. Set-Up ----
-load("Data/mice.Rdata")
+load("Data/mice_long.Rdata")
 
+
+# Add Variables
 imp_long <- imp_long %>%
   mutate(FemalexChild = case_when(Female == "No" & Child_W8 == "No" ~ "Male, No Child",
                                   Female == "Yes" & Child_W8 == "No" ~ "Female, No Child",
@@ -20,7 +22,7 @@ imp_long <- imp_long %>%
                                   Female == "Yes" & Child_W8 == "Yes" ~ "Female, with Child") %>%
            factor(c("Male, No Child", "Female, No Child", "Male, with Child", "Female, with Child")))
 
-
+# Clean Labels
 lbl_clean <- c(Any_NEET = "1+ Months NEET",
   Months_NEET = "Months NEET",
   cluster4 = "NEET Cluster",
@@ -59,22 +61,15 @@ lbl_clean <- c(Any_NEET = "1+ Months NEET",
   LOC_Factor_W2 = "Internal Locus of Control",
   "_cons" = "Intercept",
   n = "Observations") %>%
-  enframe(name = "var", value = "var_clean") %>%
-  mutate(lvls = map(var, 
-                    function(x){
-                      y <- (imp_long[[x]])
-                      if (is.factor(y)) labs <- levels(y)
-                      else labs <- x
-                      enframe(labs, name = "level", value = "cat")
-                    })) %>%
-  unnest(lvls) %>%
-  filter(!(level == 1 & cat == "No")) %>%
-  mutate(cat_clean = ifelse(cat == "Yes" | var == cat, 
-                            var_clean, cat)) %>%
-  mutate(index = row_number(),
-         var_clean = fct_inorder(var_clean),
-         cat_clean = fct_inorder(cat_clean))
+  make_lbls(imp_long)
+
 lbl_clean
+
+
+
+
+
+
 
 # 2. Descriptive Statistics ----
 get_freq <- function(df, norm = 40){
@@ -347,11 +342,11 @@ cluster4_plot <- function(df, file_name = NULL, height = 9.9, y_int = 1, y_title
     coord_flip() +
     facet_grid(var_clean ~ ., scales = "free", switch = "y", space = "free_y",
                labeller = labeller(var_clean = strip_labels)) +
-    labs(x = NULL, y = "Odds Ratio", color = "Cluster") +
+    labs(x = NULL, y = y_title, color = "Cluster") +
     theme_minimal() +
     theme(strip.placement = "outside",
           strip.text.y.left = element_text(angle = 0),
-          legend.position = c(.85,.85))
+          legend.position = "bottom")
   if (!is.null(file_name)){
     file_name <- glue(file_name) %>%
       paste0("Images/", ., ".png")

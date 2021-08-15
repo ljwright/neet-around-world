@@ -31,7 +31,7 @@ program define prog_regsave
 	args outcome estimator Any_NEET Months_NEET neet_cluster type file
 	
 	if "`file'"!="replace" local file append	
-	regsave using "Data/regsave.dta", ///
+	regsave using "Data/regsave_test.dta", ///
 		addlabel(outcome, `outcome', estimator, `estimator', ///
 		Any_NEET, `Any_NEET', Months_NEET, `Months_NEET', ///
 		neet_cluster, `neet_cluster', type, `type') pval ci `file'
@@ -94,34 +94,25 @@ global logit		Employed_W8 FinDiff_W8 PoorHealth_W8
 global heckman		LogPay_W8 
 global heckprobit 	ShiftWork_W8 Precarious_W8
 
-foreach glb in reg logit {
-	foreach var of global `glb' {		
-		prog_observed `var' `dta_type'	
-		
-		local cond
-		if "`glb'"=="tobit"{
-			sum `var'
-			local cond ll(`r(min)') ul(`r(max)') 
-			}
-		
-		`svy': `glb' `var' i.Any_NEET $covars if observed==1, `cond'
-		prog_regsave `var' `glb' TRUE FALSE FALSE `mi'	
-		
-		`svy': `glb' `var' i.neet_cluster $covars if observed==1, `cond'
-		prog_regsave `var' `glb' FALSE FALSE TRUE `mi'
-			
-		`svy': `glb' `var' i.Any_NEET c.Months_NEET $covars if observed==1, `cond'
-		prog_regsave `var' `glb' TRUE TRUE FALSE `mi'	
-		
-		`svy': `glb' `var' i.neet_cluster c.Months_NEET $covars if observed==1, `cond'
-		prog_regsave `var' `glb' FALSE TRUE TRUE `mi'
-		}
-	}
+// foreach glb in reg logit {
+// 	foreach var of global `glb' {		
+// 		prog_observed `var' `dta_type'	
+//		
+// 		local cond
+// 		if "`glb'"=="tobit"{
+// 			sum `var'
+// 			local cond ll(`r(min)') ul(`r(max)') 
+// 			}
+//		
+// 		`svy': `glb' `var' i.Any_NEET $covars if observed==1, `cond'
+// 		prog_regsave `var' `glb' TRUE FALSE FALSE `mi'	
+//		
+// 		`svy': `glb' `var' i.neet_cluster $covars if observed==1, `cond'
+// 		prog_regsave `var' `glb' FALSE FALSE TRUE `mi'
+// 		}
+// 	}
 	
 foreach glb in heckman heckprobit {
-	
-	local maximize = cond("`glb'" == "heckprobit", "iterate(500)", "")
-	
 	foreach var of global `glb' {
 		
 		capture drop select_var
@@ -129,20 +120,12 @@ foreach glb in heckman heckprobit {
 		prog_observed select_var `dta_type'
 		
 		`svy': `glb' `var' i.Any_NEET $covars if observed==1, ///
-			select(Employed_W8 = i.Any_NEET ${covars}) `maximize'
-		prog_regsave `var' `glb' TRUE FALSE FALSE `mi'	
+				select(Employed_W8 = i.Any_NEET $covars)
+		prog_regsave `var' `glb' TRUE FALSE FALSE `mi'
 		
 		`svy': `glb' `var' i.neet_cluster $covars if observed==1, ///
-			select(Employed_W8 = i.neet_cluster ${covars}) `maximize'
-		prog_regsave `var' `glb' FALSE FALSE TRUE `mi'
-			
-		`svy': `glb' `var' i.Any_NEET c.Months_NEET $covars if observed==1, ///
-			select(Employed_W8 = i.Any_NEET c.Months_NEET ${covars}) `maximize'
-		prog_regsave `var' `glb' TRUE TRUE FALSE `mi'		
-		
-		`svy': `glb' `var' i.neet_cluster c.Months_NEET $covars if observed==1, ///
-			select(Employed_W8 = i.neet_cluster c.Months_NEET ${covars}) `maximize'
-		prog_regsave `var' `glb' FALSE TRUE TRUE `mi'
+				select(Employed_W8 = i.neet_cluster $covars)
+			prog_regsave `var' `glb' FALSE FALSE TRUE `mi'
 		}
 	}
 }

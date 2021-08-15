@@ -2,16 +2,12 @@
 
 clear
 set more off
-cd "\\ad.ucl.ac.uk\homer\rmjllwr\Documents\PhD\Empirical Work\NEET Book"
-// cd "D:\Next Steps 1-8\Projects\NEET Book"
+cd "F:\Next Steps 1-8\Projects\NEET Book"
 
 * 1. Set Up ----
-// use "Data/mice_long.dta", clear
-// compress
-// save "Data/mice_long.dta", replace
 use "Data/mice_long.dta", clear
 capture log close
-log using "Notes/regressions.log", replace
+log using "Notes/regressions_ame.log", replace
 
 * Recode Binary Variables
 foreach var of varlist Any_NEET Employed_W8 FinDiff_W8 PoorHealth_W8 ShiftWork_W8 Precarious_W8{
@@ -44,20 +40,25 @@ global covars	i.FemalexChild c.FirstChild c.FemalexFirstChild /// i.Female##i.Ch
 * Create Programs
 capture program drop prog_regsave
 program define prog_regsave
-	args outcome estimator Any_NEET Months_NEET cluster4 type file
+	args outcome estimator Any_NEET Months_NEET neet_cluster type file
 	
 	if "`file'"!="replace" local file append	
 	regsave using "Data/regsave_ame.dta", ///
 		addlabel(outcome, `outcome', estimator, `estimator', ///
 		Any_NEET, `Any_NEET', Months_NEET, `Months_NEET', ///
-		cluster4, `cluster4', type, `type') pval ci `file'
+		neet_cluster, `neet_cluster', type, `type') pval ci `file'
 end
 
 capture program drop prog_observed
 program define prog_observed
 	args var
-	capture drop observed
+	capture drop observed weight_norm
 	by NSID (imp), sort: gen observed = !missing(`var'[1])
+	by NSID observed (imp), sort: egen total_weight = sum(Survey_Weight_W8)
+	by NSID observed (imp), sort: gen weight_norm = Survey_Weight_W8 * _N / total_weight
+	drop total_weight
+	
+	mi svyset [pweight = weight_norm]
 end
 
 capture program drop emargins
@@ -71,7 +72,6 @@ end
 
 * 2. Run Regressions ----
 mi import flong, id(NSID) m(imp) clear
-mi svyset [pweight=Survey_Weight_W8]
 mi xtset, clear
 
 
@@ -86,11 +86,11 @@ mi estimate, cmdok: emargins ///
 	"zinb Months_NEET $covars if observed==1, inflate(${covars})"
 prog_regsave Months_NEET zinb FALSE FALSE FALSE mi
 
-prog_observed cluster4	
+prog_observed neet_cluster	
 local covars: subinstr global covars "i.Education_W8" ""
 mi estimate, cmdok: emargins ///
-	"mlogit cluster4 `covars' if observed == 1 & Any_NEET == 1, rrr baseoutcome(2)"
-prog_regsave cluster4 mlogit FALSE FALSE FALSE mi
+	"mlogit neet_cluster `covars' if observed == 1 & Any_NEET == 1, rrr baseoutcome(2)"
+prog_regsave neet_cluster mlogit FALSE FALSE FALSE mi
 
 
 * Predicting Wave 8 Outcomes
@@ -118,7 +118,7 @@ foreach glb in reg logit {
 		prog_regsave `var' `glb' TRUE FALSE FALSE mi	
 		
 		mi estimate, cmdok: emargins ///
-			"`glb' `var' i.cluster4 $covars if observed==1, `cond'"
+			"`glb' `var' i.neet_cluster $covars if observed==1, `cond'"
 		prog_regsave `var' `glb' FALSE FALSE TRUE mi
 			
 		mi estimate, cmdok: emargins ///
@@ -126,30 +126,34 @@ foreach glb in reg logit {
 		prog_regsave `var' `glb' TRUE TRUE FALSE mi	
 		
 		mi estimate, cmdok: emargins ///
-			"`glb' `var' i.cluster4 c.Months_NEET $covars if observed==1, `cond'"
+			"`glb' `var' i.neet_cluster c.Months_NEET $covars if observed==1, `cond'"
 		prog_regsave `var' `glb' FALSE TRUE TRUE mi
 		}
 	}
 	
 foreach glb in heckman heckprobit {
+	
+	local maximize = cond("`glb'" == "heckprobit", "iterate(500)", "")
+	
 	foreach var of global `glb' {
-		capture drop observed
-		by NSID (imp), sort: gen observed = Employed_W8[1]==0 | (Employed_W8[1]==1 & !missing(`var'[1]))
+		capture drop select_var
+		gen select_var = 1 if Employed_W8 == 0 | (Employed_W8==1 & !missing(`var'))
+		prog_observed select_var
 		
 		mi estimate, cmdok: emargins ///
-			"`glb' `var' i.Any_NEET $covars if observed==1, select(Employed_W8 = i.Any_NEET $covars)"
+			"`glb' `var' i.Any_NEET $covars if observed==1, select(Employed_W8 = i.Any_NEET $covars) `maximize'"
 		prog_regsave `var' `glb' TRUE FALSE FALSE mi	
 		
 		mi estimate, cmdok: emargins ///
-			"`glb' `var' i.cluster4 $covars if observed==1, select(Employed_W8 = i.cluster4 $covars)"
+			"`glb' `var' i.neet_cluster $covars if observed==1, select(Employed_W8 = i.neet_cluster $covars) `maximize'"
 		prog_regsave `var' `glb' FALSE FALSE TRUE mi
 			
 		mi estimate, cmdok: emargins ///
-			"`glb' `var' i.Any_NEET c.Months_NEET $covars if observed==1, select(Employed_W8 = i.Any_NEET c.Months_NEET $covars)"
+			"`glb' `var' i.Any_NEET c.Months_NEET $covars if observed==1, select(Employed_W8 = i.Any_NEET c.Months_NEET $covars)  `maximize'"
 		prog_regsave `var' `glb' TRUE TRUE FALSE mi		
 		
 		mi estimate, cmdok: emargins ///
-			"`glb' `var' i.cluster4 c.Months_NEET $covars if observed==1, select(Employed_W8 = i.cluster4 c.Months_NEET $covars)"
+			"`glb' `var' i.neet_cluster c.Months_NEET $covars if observed==1, select(Employed_W8 = i.neet_cluster c.Months_NEET $covars)  `maximize'"
 		prog_regsave `var' `glb' FALSE TRUE TRUE mi
 		}
 	}

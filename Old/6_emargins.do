@@ -2,7 +2,8 @@
 
 clear
 set more off
-cd "F:\Next Steps 1-8\Projects\NEET Book"
+capture cd "/Volumes/USB DRIVE/Next Steps 1-8/Projects/NEET Book"
+capture cd "F:\Next Steps 1-8\Projects\NEET Book"
 
 * 1. Set Up ----
 use "Data/mice_long.dta", clear
@@ -66,7 +67,7 @@ program emargins, eclass properties(mi)
   version 15
   args mod_string
   svy: `mod_string'
-  margins, dydx(*) post
+  margins, dydx(*) post atmeans
 end
 
 

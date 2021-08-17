@@ -11,162 +11,129 @@ library(gallimaufr)
 rm(list=ls())
 
 # 1. Set-Up ----
+load("Data/mice.Rdata")
 load("Data/mice_long.Rdata")
 
 
 # Add Variables
+df_child <- complete(imp, "long", TRUE) %>%
+  as_tibble() %>%
+  mutate(first_child = ifelse(Child_W8 != 'Yes', NA, FirstChild)) %>%
+  select(NSID, imp = .imp, first_child)
+
 imp_long <- imp_long %>%
   mutate(FemalexChild = case_when(Female == "No" & Child_W8 == "No" ~ "Male, No Child",
                                   Female == "Yes" & Child_W8 == "No" ~ "Female, No Child",
                                   Female == "No" & Child_W8 == "Yes" ~ "Male, with Child",
                                   Female == "Yes" & Child_W8 == "Yes" ~ "Female, with Child") %>%
-           factor(c("Male, No Child", "Female, No Child", "Male, with Child", "Female, with Child")))
+           factor(c("Male, No Child", "Female, No Child", "Male, with Child", "Female, with Child"))) %>%
+  select(-Status_W8) %>%
+  left_join(df_child, by = c("NSID", "imp"))
+
+
 
 # Clean Labels
-lbl_clean <- c(Any_NEET = "1+ Months NEET",
-  Months_NEET = "Months NEET",
-  cluster4 = "NEET Cluster",
-  GHQ_W8_Likert = "GHQ-12 Likert",
-  LifeSat_W8 = "Life Satisfaction",
-  PoorHealth_W8 = "Poor Self-Rated Health",
-  AUDIT_W8 = "Alcohol Use",
-  Adult_W8 = "Adult Identity",
-  LOC_Factor_W8 = "External Locus of Control",
-  Employed_W8 = "Employed",
-  LogPay_W8 = "(Log) Income",
-  FinDiff_W8 = "Financial Difficulty",
-  Precarious_W8 = "Precarious Work",
-  ShiftWork_W8 = "Shift Work",
-  Female = "Female",
-  Child_W8 = "Has Child",
-  FemalexChild = "Gender x Child",
-  FirstChild = "Age at First Birth",
-  FemalexFirstChild = "Female x Age at First Birth",
-  "Female#2.Child_W8" = "Female x Has Child",
-  "Female#c.FirstChild" = "Female x Age at First Birth",
-  NonWhite = "Non-White",
-  ForLangHH_W1 = "Foreign Household Language",
-  Any_VET = "1+ Months VET",
-  Education_W8 = "Highest Qualification",
-  GHQ_W2_Caseness = "GHQ-12 Caseness",
-  GenHealth_W2 = "Self-Rated Health",
-  Disabled_W2 = "Disabled",
-  NSSEC3_W1 = "Family NS-SEC",
-  IMD_W2 = "IMD",
-  HHType_W1 = "Household Type",
-  ParentEduc5_W1 = "Parental Education",
-  GParentUni_W1 = "Grandparent Attended University",
-  SchoolAtt_W2 = "Attitude to School",
-  Risk_W1 = "Risk Behaviours",
-  LOC_Factor_W2 = "Internal Locus of Control",
-  "_cons" = "Intercept",
-  n = "Observations") %>%
+lbl_clean <- c(n = "Observations",
+               Any_NEET = "1+ Months NEET",
+               Months_NEET = "Months NEET",
+               neet_cluster = "NEET Cluster",
+               neet_spells = "NEET Spells", mean_length = "NEET Spell Duration",
+               n_spells = "Total Spells", entropy = "Sequence Entropy", 
+               GHQ_W8_Likert = "GHQ-12 Likert",
+               LifeSat_W8 = "Life Satisfaction",
+               PoorHealth_W8 = "Poor Self-Rated Health",
+               AUDIT_W8 = "Alcohol Use",
+               Adult_W8 = "Adult Identity",
+               LOC_Factor_W8 = "External Locus of Control",
+               Employed_W8 = "Employed",
+               LogPay_W8 = "(Log) Income",
+               FinDiff_W8 = "Financial Difficulty",
+               Precarious_W8 = "Precarious Work",
+               ShiftWork_W8 = "Shift Work",
+               Female = "Female",
+               Child_W8 = "Has Child",
+               first_child = "Age at First Birth",
+               FemalexChild = "Gender x Child",
+               FirstChild = "Age at First Birth",
+               FemalexFirstChild = "Female x Age at First Birth",
+               "Female#2.Child_W8" = "Female x Has Child",
+               "Female#c.FirstChild" = "Female x Age at First Birth",
+               NonWhite = "Non-White",
+               ForLangHH_W1 = "Foreign Household Language",
+               Any_VET = "1+ Months VET",
+               Education_W8 = "Highest Qualification",
+               GHQ_W2_Caseness = "GHQ-12 Caseness",
+               GenHealth_W2 = "Self-Rated Health",
+               Disabled_W2 = "Disabled",
+               NSSEC3_W1 = "Family NS-SEC",
+               IMD_W2 = "IMD",
+               HHType_W1 = "Household Type",
+               ParentEduc5_W1 = "Parental Education",
+               GParentUni_W1 = "Grandparent Attended University",
+               SchoolAtt_W2 = "Attitude to School",
+               Risk_W1 = "Risk Behaviours",
+               LOC_Factor_W2 = "Internal Locus of Control",
+               "_cons" = "Intercept") %>%
   make_lbls(imp_long)
 
 lbl_clean
 
-
-
-
-
-
-
 # 2. Descriptive Statistics ----
-get_freq <- function(df, norm = 40){
-  mean_age <- complete(imp, "long") %>% 
-    mutate(FirstChild = ifelse(Child_W8 == 'Yes', .FirstChild, NA)) %>%
-    summarise(mean = wtd.mean(FirstChild, Survey_Weight_W8)) %>%
-    pull(mean)
-  df <- mutate(df, 
-               FirstChild = ifelse(Child_W8 == 'No',
-                                   NA, FirstChild + mean_age))
-  
-  df_freq <- select(df, -NSID) %>%
-    select(where(is.factor)) %>%
-    freq(weights = df$Survey_Weight_W8) %>%
-    map_dfr(~ tb(.x) %>%  
-          pivot_longer(1, names_to = "var", values_to = "cat")) %>%
-    mutate(freq = freq /norm,
-           across(c(freq, pct_tot), 
-                  ~ round(.x, 2) %>% 
-                    format(big.mark = ",") %>%
-                    trimws()),
-           string = glue("{freq} ({pct_tot}%)")) %>%
-    select(var, cat, string)
-  
-  df_cont <- df %>%
-    descr(weights = df$Survey_Weight_W8) %>%
-    tb() %>%
-    mutate(across(c(mean, sd), 
-                  ~ round(.x, 2)),
-           string = glue("{mean} ({sd})"),
-           cat = variable) %>%
-    select(var = variable, cat, string)
-  
-  bind_rows(df_freq, df_cont)
-}
+desc <- list()
 
-df_desc <- c(into_employment = "Into Employment",
-             cyclers = "Cyclers",
-             high_ed = "Higher Education",
-             long_neet = "Long-Term NEET") %>%
-  map_dfr(~ imp_long %>%
-            filter(imp > 0,
-                   cluster4 == .x) %>%
-            get_freq(),
-          .id = "sample") %>%
-  bind_rows(bind_rows(all = imp_long %>%
-                        filter(imp>0) %>%
-                        get_freq(),
-                      neet = imp_long %>%
-                        filter(imp>0, Months_NEET > 0) %>%
-                        get_freq(),
-                      not_neet = imp_long %>%
-                        filter(imp>0, Months_NEET == 0) %>%
-                        get_freq(),
-                      .id = "sample")) %>%
-  filter(!(cat %in% c("<NA>", "No")), 
-         !(var %in% c("imp", "cluster4", "Any_NEET")),
-         str_detect(var, "W8", TRUE) | 
-             str_detect(var, "(Child|Education)")) %>%
-  pivot_wider(names_from = sample, values_from = string) %>%
-  left_join(lbl_clean, by= c("var", "cat")) %>%
-  arrange(index)
-
-desc_tbl <- df_desc %>%
-  select(var_clean, cat_clean, all, not_neet, neet,
-         high_ed, cyclers, into_employment, long_neet) %>%
-  mutate(across(c(var_clean, cat_clean), as.character)) %>%
-  mutate(var_clean = ifelse(var_clean == cat_clean, "", var_clean)) %>%
-  flextable() %>%
-  merge_v(1) %>%
-  set_header_labels(var_clean = "", cat_clean = "Variable",
-                    all = "Full Sample", neet = "1+ Months NEET", 
-                    not_neet = "0 Months NEET", into_employment = "Into Employment",
-                    cyclers = "Cyclers", high_ed = "Higher Education",
-                    long_neet = "Long-Term NEET" ) %>%
-  border_remove() %>%
-  fontsize(size = 11, part = "all") %>%
-  merge_h(part = "header") %>%
-  border_inner_h(border = fp_border(color = "gray30", style = "dashed")) %>%
-  hline_top(border = fp_border(color="black", width = 2), part = "all") %>%
-  hline_bottom(border = fp_border(color="black", width = 2), part = "all") %>%
-  fix_border_issues(part = "all") %>%
-  align(j = 1:2, align="right", part = "all") %>%
-  align(j = 3:9, align="center", part = "all") %>%
-  valign(j = 1, valign = "top") %>%
-  autofit()
-desc_tbl
-save_as_docx(desc_tbl, path = "Tables/descriptive_statistics.docx")
-
-wtd_vars <- imp_long %>%
+desc$all <- imp_long %>%
   filter(imp > 0) %>%
-  select(where(is.numeric)) %>%
-  pivot_longer(-Survey_Weight_W8) %>%
-  group_by(name) %>%
-  summarise(var = wtd.var(value, Survey_Weight_W8) %>% sqrt(),
-            .groups = "drop") %>%
-  deframe()
+  get_desc("NSID", "imp", "Survey_Weight_W8") %>%
+  select(var, cat, full_sample = string) %>%
+  left_join(lbl_clean, by = c("var" = "var", "cat" = "desc_cat"))
+
+desc$neet <- imp_long %>%
+  filter(imp > 0) %>%
+  get_desc("NSID", "imp", "Survey_Weight_W8", "Any_NEET") %>%
+  select(-miss) %>%
+  pivot_wider(names_from = group_var, values_from = string) %>%
+  rename(neet_0 = No, neet_1 = Yes) %>%
+  left_join(lbl_clean, by = c("var" = "var", "cat" = "desc_cat"))
+
+desc$cluster <- imp_long %>%
+  filter(imp > 0) %>%
+  get_desc("NSID", "imp", "Survey_Weight_W8", "neet_cluster") %>%
+  select(-miss) %>%
+  pivot_wider(names_from = group_var, values_from = string) %>%
+  left_join(lbl_clean, by = c("var" = "var", "cat" = "desc_cat"))
+
+desc$tbl_1 <- left_join(desc$all, desc$neet) %>%
+  arrange(index) %>%
+  filter(!(level == 1 & levels == 2),
+         var != "FirstChild",
+         !(str_detect(var, "_W8") & !(var %in% c("Education_W8", "Child_W8")))) %>%
+  mutate(cat_clean = ifelse(levels == 2 & cat_clean == "Yes", 
+                            var_clean, cat_clean),
+         var_clean = ifelse(var == cat | var_clean == cat_clean | (levels == 2 & level == 2),
+                            "", var_clean)) %>%
+  select(var_clean, cat_clean, `Full Sample` = full_sample, 
+         `0 Months NEET` = neet_0, `1+ Months NEET` = neet_1) %>%
+  drop_na() %>%
+  make_flx(list(var_clean = "", cat_clean = "Variable"))
+desc$tbl_1
+save_as_docx(desc$tbl_1, path = "Tables/table_5_2.docx")
+
+desc$tbl_2 <- left_join(desc$all, desc$cluster) %>%
+  arrange(index) %>%
+  filter(!(level == 1 & levels == 2),
+         var != "FirstChild",
+         !(str_detect(var, "_W8") & !(var %in% c("Education_W8", "Child_W8")))) %>%
+  mutate(cat_clean = ifelse(levels == 2 & cat_clean == "Yes", 
+                            var_clean, cat_clean),
+         var_clean = ifelse(var == cat | var_clean == cat_clean | (levels == 2 & level == 2),
+                            "", var_clean)) %>%
+  select(var_clean, cat_clean, `Full Sample` = full_sample, 
+         `Not NEET`:`Further Education`) %>%
+  drop_na() %>%
+  make_flx(list(var_clean = "", cat_clean = "Variable"))
+desc$tbl_2
+save_as_docx(desc$tbl_2, path = "Tables/table_5_3.docx")
+
 
 
 # 3. Regression Results ----
@@ -188,7 +155,7 @@ regsave <- read_dta("Data/regsave.dta") %>%
   mutate(across(c(beta, se, lci, uci),
                 ~ ifelse(!(estimator %in% c("heckman", "reg")) |
                            part == "Employed_W8", exp(.x), .x))) %>%
-  mutate(across(c(Any_NEET, Months_NEET, cluster4), as.logical), 
+  mutate(across(c(Any_NEET, Months_NEET, neet_cluster), as.logical), 
          string = glue("{round(beta, 2)}\n({round(lci, 2)}, {round(uci, 2)})")) %>%
   left_join(lbl_clean, by = c("var", "level")) %>%
   left_join(lbl_clean %>%
@@ -366,7 +333,7 @@ cluster_plots <- function(df_temp, ame = FALSE){
     y_int <- 1
     y_title <- "Odds Ratio"
   }
-
+  
   df_temp %>%
     cluster4_plot(glue("cluster4_{fle}all_vars"), 29.7, 
                   y_int, y_title)
@@ -414,7 +381,7 @@ df_temp <- df_ame %>%
          !(var %in% c("_cons", "Education_W8")))
 cluster_plots(df_temp, TRUE)
 
-  
+
 # c. Age 25 Outcomes
 age25_plot <- function(df, file_name = NULL, height = 9.9, ame = FALSE){
   
@@ -452,11 +419,11 @@ age25_plot <- function(df, file_name = NULL, height = 9.9, ame = FALSE){
 }
 
 age25_plots <- function(df_temp, ame = FALSE){
-    if (ame == TRUE){
-      fle <- "ame_"
-    } else{
-      fle <- ""
-    }
+  if (ame == TRUE){
+    fle <- "ame_"
+  } else{
+    fle <- ""
+  }
   
   df_temp %>%
     age25_plot(glue("age25_{fle}all_vars"), 29.7, ame)
@@ -604,3 +571,5 @@ df_temp %>%
   neet_plot()
 # ADD HLINE OPTION; CHANGE FACET_GRID OPTION TO SPACE = FREE_Y
 # standardize continuous?
+
+# 6. Rename Files ----

@@ -51,7 +51,7 @@ end
 
 
 * 2. Run Regressions ----
-foreach mi in mi obs{
+foreach mi in mi { // obs{
 
 if "`mi'" == "mi"{
 	mi import flong, id(NSID) m(imp) clear
@@ -94,7 +94,7 @@ global logit		Employed_W8 FinDiff_W8 PoorHealth_W8
 global heckman		LogPay_W8 
 global heckprobit 	ShiftWork_W8 Precarious_W8
 
-foreach glb in reg logit {
+foreach glb in reg logit tobit {
 	foreach var of global `glb' {		
 		prog_observed `var' `dta_type'	
 		
@@ -110,11 +110,11 @@ foreach glb in reg logit {
 		`svy': `glb' `var' i.neet_cluster $covars if observed==1, `cond'
 		prog_regsave `var' `glb' FALSE FALSE TRUE `mi'
 			
-		`svy': `glb' `var' i.Any_NEET c.Months_NEET $covars if observed==1, `cond'
-		prog_regsave `var' `glb' TRUE TRUE FALSE `mi'	
-		
-		`svy': `glb' `var' i.neet_cluster c.Months_NEET $covars if observed==1, `cond'
-		prog_regsave `var' `glb' FALSE TRUE TRUE `mi'
+// 		`svy': `glb' `var' i.Any_NEET c.Months_NEET $covars if observed==1, `cond'
+// 		prog_regsave `var' `glb' TRUE TRUE FALSE `mi'	
+//		
+// 		`svy': `glb' `var' i.neet_cluster c.Months_NEET $covars if observed==1, `cond'
+// 		prog_regsave `var' `glb' FALSE TRUE TRUE `mi'
 		}
 	}
 	
@@ -136,13 +136,13 @@ foreach glb in heckman heckprobit {
 			select(Employed_W8 = i.neet_cluster ${covars}) `maximize'
 		prog_regsave `var' `glb' FALSE FALSE TRUE `mi'
 			
-		`svy': `glb' `var' i.Any_NEET c.Months_NEET $covars if observed==1, ///
-			select(Employed_W8 = i.Any_NEET c.Months_NEET ${covars}) `maximize'
-		prog_regsave `var' `glb' TRUE TRUE FALSE `mi'		
-		
-		`svy': `glb' `var' i.neet_cluster c.Months_NEET $covars if observed==1, ///
-			select(Employed_W8 = i.neet_cluster c.Months_NEET ${covars}) `maximize'
-		prog_regsave `var' `glb' FALSE TRUE TRUE `mi'
+// 		`svy': `glb' `var' i.Any_NEET c.Months_NEET $covars if observed==1, ///
+// 			select(Employed_W8 = i.Any_NEET c.Months_NEET ${covars}) `maximize'
+// 		prog_regsave `var' `glb' TRUE TRUE FALSE `mi'		
+//		
+// 		`svy': `glb' `var' i.neet_cluster c.Months_NEET $covars if observed==1, ///
+// 			select(Employed_W8 = i.neet_cluster c.Months_NEET ${covars}) `maximize'
+// 		prog_regsave `var' `glb' FALSE TRUE TRUE `mi'
 		}
 	}
 }

@@ -119,10 +119,12 @@ save(df_clust, file = "Data/neet_cluster.Rdata")
 write_dta(df_clust,"Data/neet_cluster.dta")
 
 # All Sequences
+load("Data/neet_cluster.Rdata")
+
 prep_data <- function(type = "all"){
   if (type == "all"){
     df <- df_clust %>%
-      mutate(group_var = 1) %>%
+      mutate(group_var = "All Sequences (6997 seq.)") %>%
       select(NSID, group_var, wt = all_weight)
   } else{
     df <- df_clust %>%
@@ -156,7 +158,8 @@ make_index <- function(type = "all"){
              as.Date(origin = "1970-01-01")) %>%
     ungroup()
   
-  plot_seq(df_p, facet)
+  plot_seq(df_p) +
+    scale_y_continuous(labels = comma)
 }
 
 make_density <- function(type = "all"){
@@ -175,75 +178,72 @@ make_density <- function(type = "all"){
     mutate(xmin = date,
            xmax = ifelse(row_number() == n(), xmin + 30, lead(xmin)) %>%
              as.Date(origin = "1970-01-01")) %>%
-    ungroup()
+    ungroup() %>%
+    group_by(group_var) %>%
+    mutate(ymin = ymin/max(ymax),
+           ymax = ymax/max(ymax))
   
-  plot_seq(df_p, facet)
+  plot_seq(df_p) +
+    scale_y_continuous(labels = percent)
 }
 
-plot_seq <- function(df, facet = FALSE){
-  p <- ggplot(df) +
+plot_seq <- function(df){
+  ggplot(df) +
     aes(xmin = xmin, xmax = xmax, ymin = ymin, ymax = ymax, 
         fill = activity, color = activity) +
+    facet_wrap(~ group_var, scales = "free_y", ncol = 1) +
     geom_rect() +
     theme_minimal() +
     scale_color_brewer(palette = "Dark2") +
     scale_fill_brewer(palette = "Dark2") +
     scale_x_date(breaks = glue("{2000:2015}-09-01") %>% as.Date(), 
                  date_labels = "%b %Y") +
-    scale_y_continuous(labels = comma) +
     labs(x = NULL, y = NULL,
          color = NULL, fill = NULL) +
     theme(legend.position = "bottom",
           axis.text.x = element_text(angle = 45, hjust = 1))
-  
-  if (facet){
-    p <- p +
-      facet_wrap(~ group_var, scales = "free_y", ncol = 1)
-  }
-  
-  return(p)
 }
 
 # All Sequences
 make_density("all")
-ggsave("Images/seq_density_all.png", dpi = 1200,
+ggsave("Images/Sequences/seq_density_all.png", dpi = 1200,
        width = 21, height = 16, units = "cm")
 
 make_density("all") +
   scale_color_grey() +
   scale_fill_grey()
-ggsave("Images/seq_density_all_bw.png", dpi = 1200,
+ggsave("Images/Sequences/seq_density_all_bw.png", dpi = 1200,
        width = 21, height = 16, units = "cm")
 
 make_index("all")
-ggsave("Images/seq_index_all.png", dpi = 1200,
+ggsave("Images/Sequences/seq_index_all.png", dpi = 1200,
        width = 21, height = 16, units = "cm")
 
 make_index("all") +
   scale_color_grey() +
   scale_fill_grey()
-ggsave("Images/seq_index_all_bw.png", dpi = 1200,
+ggsave("Images/Sequences/seq_index_all_bw.png", dpi = 1200,
        width = 21, height = 16, units = "cm")
 
 # NEET Sequences
 make_density("neet")
-ggsave("Images/seq_density_neet.png", dpi = 1200,
+ggsave("Images/Sequences/seq_density_neet.png", dpi = 1200,
        width = 21, height = 29.7, units = "cm")
 
 make_density("neet") +
   scale_color_grey() +
   scale_fill_grey()
-ggsave("Images/seq_density_neet_bw.png", dpi = 1200,
+ggsave("Images/Sequences/seq_density_neet_bw.png", dpi = 1200,
        width = 21, height = 29.7, units = "cm")
 
 make_index("neet")
-ggsave("Images/seq_index_neet.png", dpi = 1200,
+ggsave("Images/Sequences/seq_index_neet.png", dpi = 1200,
        width = 21, height = 29.7, units = "cm")
 
 make_index("neet") +
   scale_color_grey() +
   scale_fill_grey()
-ggsave("Images/seq_index_neet_bw.png", dpi = 1200,
+ggsave("Images/Sequences/seq_index_neet_bw.png", dpi = 1200,
        width = 21, height = 29.7, units = "cm")
 
 
@@ -276,7 +276,6 @@ df_extra <- df_seq %>%
   mutate(n_spells = max(n_spells, na.rm = TRUE)) %>%
   ungroup() %>%
   filter(status == "NEET") %>%
-  # mutate(across(c(status_spells, mean_length), replace_na, 0)) %>%
   select(-status) %>%
   rename(neet_spells = status_spells) %>%
   mutate(entropy = seqient(seq_all) %>% as.numeric())
